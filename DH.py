@@ -21,7 +21,6 @@ def hkdf(inp, length):
                 info=b'', backend=default_backend())
     return hkdf.derive(inp)
 
-
 def pad(msg):
     # pkcs7 padding
     num = 16 - (len(msg) % 16)
@@ -83,6 +82,28 @@ class Bob(object):
         shared_send = self.root_ratchet.next(dh_send)[0]
         self.send_ratchet = SymmRatchet(shared_send)
         print('[Bob]\tSend ratchet seed:', b64(shared_send))
+
+    def dh_ratchet(self, bob_public):
+        # perform a DH ratchet rotation using Bob's public key
+        if self.DHratchet is not None:
+            # the first time we don't have a DH ratchet yet
+            dh_recv = self.DHratchet.exchange(bob_public)
+            shared_recv = self.root_ratchet.next(dh_recv)[0]
+            # use Bob's public and our old private key
+            # to get a new recv ratchet
+            self.recv_ratchet = SymmRatchet(shared_recv)
+            print('[Alice]\tRecv ratchet seed:', b64(shared_recv))
+        # generate a new key pair and send ratchet
+        # our new public key will be sent with the next message to Bob
+        self.DHratchet = X25519PrivateKey.generate()
+        dh_send = self.DHratchet.exchange(bob_public)
+        shared_send = self.root_ratchet.next(dh_send)[0]
+        self.send_ratchet = SymmRatchet(shared_send)
+        print('[Alice]\tSend ratchet seed:', b64(shared_send))
+
+
+
+
 
     def send(self, alice, msg):
        	key, iv = self.send_ratchet.next()
@@ -174,7 +195,17 @@ bob.init_ratchets()
 alice.dh_ratchet(bob.DHratchet.public_key())
 
 
-alice.send(bob, b'Hello Bob!')
-bob.send(alice, b'Hello Alice!')
-alice.send(bob, b'How are you?')
-bob.send(alice, b'Fine!')
+# alice.send(bob, b'Hello Bob!')
+# bob.send(alice, b'Hello Alice!')
+# alice.send(bob, b'How are you?')
+# bob.send(alice, b'Fine!')
+
+while True:
+	msg = input("Alice: ")
+	if msg == "exit":
+		break
+	alice.send(bob, msg.encode('utf-8'))
+	msg = input("Bob: ")
+	if msg == "exit":
+		break
+	bob.send(alice, msg.encode('utf-8'))
